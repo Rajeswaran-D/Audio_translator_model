@@ -2,4 +2,7 @@ fastapi
 uvicorn[standard]
 pydub
 python-multipart
-
+openai-whisper
+librosa
+soundfile
+numpy
