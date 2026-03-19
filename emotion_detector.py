@@ -8,6 +8,7 @@ from audio segments, then maps the feature profile to one of six emotions:
 Provides:
   detect_emotion(audio_path)                           -> str   (backward-compatible)
   detect_emotions_for_segments(audio_path, segments)   -> list   (enriched segments)
+  warm_up()                                            -> bool  (pre-loads models)
 """
 
 import os
@@ -30,6 +31,12 @@ def _get_librosa():
         _librosa = librosa
         logger.info("librosa loaded successfully.")
     return _librosa
+
+
+def warm_up():
+    """Pre-loads heavy dependencies (librosa)."""
+    print("Director: Warming up Emotion Detector...")
+    return _get_librosa() is not None
 
 
 # ---------------------------------------------------------------------------
@@ -115,40 +122,66 @@ _RATE_FAST = 3.5       # words/sec
 _RATE_SLOW = 1.5       # words/sec
 
 
-def _classify_emotion(pitch: float, energy: float, rate: float) -> str:
+def _classify_gender(pitch: float, text: str = "") -> str:
     """
-    Map acoustic features to one of six emotions using a rule-based heuristic.
+    Classifies gender based on median fundamental frequency (F0).
+    Male typical: 85-155 Hz | Female typical: 165-255 Hz
+    """
+    if pitch == 0:
+        return "male" 
+    if pitch < 145:
+        return "male"
+    else:
+        return "female"
 
-    The rules approximate well-known acoustic correlates of emotion:
-      angry   — high energy + high pitch + fast rate
-      happy   — high energy + high pitch
-      fear    — high pitch  + low energy + fast rate
-      surprise— very high pitch + moderate-to-high energy
-      sad     — low pitch   + low energy + slow rate
-      neutral — everything else
+def _classify_age(pitch: float, rate: float) -> str:
     """
-    if energy >= _ENERGY_HIGH and pitch >= _PITCH_HIGH and rate >= _RATE_FAST:
+    Classifies age group based on pitch and speech rate.
+    Child typical: > 250 Hz
+    Elderly typical: < 1.8 words/sec and slightly lower pitch than standard adult
+    Adult: default
+    """
+    if pitch > 250:
+        return "child"
+    if rate > 0 and rate < 1.8:
+        return "elderly"
+    return "adult"
+
+def _classify_emotion(pitch: float, energy: float, rate: float, gender: str = "male") -> str:
+    """
+    Map acoustic features to one of six emotions using gender-relative heuristics.
+    """
+    # Adjust pitch thresholds based on gender
+    # Female standard: ~220Hz. Male standard: ~150Hz.
+    PITCH_HI = 210.0 if gender == "female" else 155.0
+    PITCH_LO = 130.0 if gender == "female" else 95.0
+
+    # Log metrics for debugging emotionless results
+    print(f"DEBUG: Emotion Check -> Pitch: {pitch:.1f} (Threshold: {PITCH_HI:.1f}), Energy: {energy:.4f} (Threshold: {_ENERGY_HIGH}), Rate: {rate:.1f}")
+
+    if energy >= _ENERGY_HIGH and pitch >= PITCH_HI and rate >= _RATE_FAST:
         return "angry"
-    if energy >= _ENERGY_HIGH and pitch >= _PITCH_HIGH:
+    if energy >= _ENERGY_HIGH and pitch >= PITCH_HI:
         return "happy"
-    if pitch >= _PITCH_HIGH * 1.3 and energy >= _ENERGY_LOW:
+    if pitch >= PITCH_HI * 1.3 and energy >= _ENERGY_LOW:
         return "surprise"
-    if pitch >= _PITCH_HIGH and energy < _ENERGY_LOW and rate >= _RATE_FAST:
+    if pitch >= PITCH_HI and energy < _ENERGY_LOW and rate >= _RATE_FAST:
         return "fear"
-    if pitch < _PITCH_LOW and energy < _ENERGY_LOW and rate <= _RATE_SLOW:
+    if pitch < PITCH_LO and energy < _ENERGY_LOW and rate <= _RATE_SLOW:
         return "sad"
-    if pitch >= _PITCH_HIGH and energy < _ENERGY_HIGH:
-        return "fear"
     return "neutral"
 
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
+def _calculate_intensity(energy: float) -> str:
+    """Return an intensity label: quiet, moderate, high."""
+    if energy >= _ENERGY_HIGH * 1.5:
+        return "high"
+    if energy >= _ENERGY_HIGH * 0.8:
+        return "moderate"
+    return "quiet"
 
 def detect_emotions_for_segments(audio_path: str, segments: list) -> list:
     """
-    Detect emotion for each speech segment using acoustic features.
+    Detect emotion and gender for each speech segment using acoustic features.
 
     Parameters
     ----------
@@ -160,18 +193,18 @@ def detect_emotions_for_segments(audio_path: str, segments: list) -> list:
     Returns
     -------
     list[dict]
-        Same dicts with an added ``emotion`` key (str).
-        On any per-segment error the emotion defaults to ``"neutral"``.
+        Same dicts with added ``emotion`` (str) and ``gender`` (str) keys.
     """
     if not segments:
         return []
 
     y, sr = _load_audio(audio_path)
     if y is None:
-        # Cannot load audio — return all segments tagged as "neutral"
-        return [{**seg, "emotion": "neutral"} for seg in segments]
+        return [{**seg, "emotion": "neutral", "gender": "female", "age_group": "adult"} for seg in segments]
 
     enriched = []
+    print(f"\n--- Starting Audio Analysis for: {os.path.basename(audio_path)} ---")
+    
     for seg in segments:
         try:
             start_sec = seg.get("start", 0.0)
@@ -179,18 +212,16 @@ def detect_emotions_for_segments(audio_path: str, segments: list) -> list:
             text = seg.get("text", "")
             duration = end_sec - start_sec
 
-            # Guard: segment too short (< 0.1 s)
             if duration < 0.1:
-                enriched.append({**seg, "emotion": "neutral"})
+                enriched.append({**seg, "emotion": "neutral", "gender": "male", "age_group": "adult"})
                 continue
 
-            # Slice the waveform for this segment
             start_sample = int(start_sec * sr)
             end_sample = int(end_sec * sr)
             y_seg = y[start_sample:end_sample]
 
             if len(y_seg) == 0:
-                enriched.append({**seg, "emotion": "neutral"})
+                enriched.append({**seg, "emotion": "neutral", "gender": "male", "age_group": "adult"})
                 continue
 
             # Extract features
@@ -198,14 +229,25 @@ def detect_emotions_for_segments(audio_path: str, segments: list) -> list:
             energy = _extract_energy(y_seg)
             rate = _estimate_speech_rate(text, duration)
 
-            emotion = _classify_emotion(pitch, energy, rate)
-            enriched.append({**seg, "emotion": emotion})
+            gender = _classify_gender(pitch, text)
+            age_group = _classify_age(pitch, rate)
+            emotion = _classify_emotion(pitch, energy, rate, gender)
+            intensity = _calculate_intensity(energy)
+            
+            print(f"DEBUG: Final Decision -> Gender: {gender}, Age: {age_group}, Emotion: {emotion}, Intensity: {intensity}\n")
+            enriched.append({
+                **seg, 
+                "emotion": emotion, 
+                "gender": gender, 
+                "age_group": age_group,
+                "intensity": intensity
+            })
 
         except Exception as exc:
-            logger.warning("Emotion detection failed for segment %s: %s", seg, exc)
-            enriched.append({**seg, "emotion": "neutral"})
+            logger.warning("Analysis failed for segment %s: %s", seg, exc)
+            enriched.append({**seg, "emotion": "neutral", "gender": "male", "age_group": "adult"})
 
-    # Free cached audio now that we're done
+    print("--- Analysis Complete ---\n")
     clear_audio_cache()
     return enriched
 
