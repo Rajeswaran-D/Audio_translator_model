@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Audio Translator & Dubbing</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=Playfair+Display:ital,wght@0,700;1,700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="glass-background"></div>
+    
+    <main class="container">
+        <header class="hero">
+            <h1 class="glow-text">Audio<span>Dub</span> AI</h1>
+            <p class="subtitle">Next-generation multilingual translation & emotional dubbing</p>
+        </header>
+
+        <section class="upload-section glass-card">
+            <div class="drop-zone" id="dropZone">
+                <div class="icon-box">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                </div>
+                <p>Drag & Drop your audio or <span class="browse-btn">browse</span></p>
+                <input type="file" id="fileInput" accept="audio/*" hidden>
+                <p class="file-name" id="fileName"></p>
+            </div>
+
+            <div class="controls">
+                <div class="input-group">
+                    <label>Target Language</label>
+                    <select id="languageSelect">
+                        <option value="ta">Tamil (ta)</option>
+                        <option value="te">Telugu (te)</option>
+                        <option value="hi">Hindi (hi)</option>
+                        <option value="en">English (en)</option>
+                    </select>
+                </div>
+                <button id="processBtn" class="primary-btn">Start Translation</button>
+            </div>
+
+            <div class="progress-container hidden" id="progressContainer">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <p id="statusText">Processing audio segments...</p>
+            </div>
+        </section>
+
+        <section class="result-section glass-card hidden" id="resultSection">
+            <h2>Processing Complete</h2>
+            <div class="audio-player-box">
+                <audio id="audioResult" controls></audio>
+            </div>
+            <div class="action-btns">
+                <a id="downloadAudio" class="secondary-btn" download>Download Audio</a>
+                <a id="downloadMetadata" class="secondary-btn" download>Download Metadata</a>
+            </div>
+            
+            <div class="segments-info">
+                <h3>Segments Analysis</h3>
+                <div class="table-wrapper">
+                    <table id="segmentsTable">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Emotion</th>
+                                <th>Gender</th>
+                                <th>Age</th>
+                                <th>Voice</th>
+                                <th>Translation</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>&copy; 2026 AudioDub AI Engine. Powered by Whisper & Edge TTS.</p>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>

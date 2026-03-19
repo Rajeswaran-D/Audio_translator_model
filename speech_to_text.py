@@ -72,26 +72,48 @@ def transcribe_audio_segments(audio_path: str, language: str = None) -> list:
     try:
         model = _get_model()
 
-        # Build transcribe kwargs
+        # Build transcribe kwargs with robustness parameters
         transcribe_kwargs = {
             "word_timestamps": True,   # enables per-word timing
             "verbose": False,          # suppress Whisper's own prints
+            "no_speech_threshold": 0.6, # tolerate some noise
+            "logprob_threshold": -1.0,  # reject very low confidence
+            "compression_ratio_threshold": 2.4, # ignore repetitive noise
+            "condition_on_previous_text": True, # use context
         }
         if language:
             transcribe_kwargs["language"] = language
 
         result = model.transcribe(audio_path, **transcribe_kwargs)
 
+        raw_segments = result.get("segments", [])
         segments = []
-        for seg in result.get("segments", []):
+        
+        # Intelligent Chunk Merging: Merge small segments to avoid fragmentation
+        # (e.g. if a segment is < 1s and has few words, merge with next)
+        current_seg = None
+        
+        for seg in raw_segments:
             text = seg.get("text", "").strip()
-            if not text:
-                continue  # skip empty segments
-            segments.append({
-                "text": text,
-                "start": round(seg.get("start", 0.0), 3),
-                "end": round(seg.get("end", 0.0), 3),
-            })
+            if not text: continue
+            
+            start = round(seg.get("start", 0.0), 3)
+            end = round(seg.get("end", 0.0), 3)
+            
+            if current_seg is None:
+                current_seg = {"text": text, "start": start, "end": end}
+            else:
+                # If gap is small (< 0.5s) and current segment is short (< 2s), merge
+                gap = start - current_seg["end"]
+                if gap < 0.5 and (current_seg["end"] - current_seg["start"]) < 2.0:
+                    current_seg["text"] += " " + text
+                    current_seg["end"] = end
+                else:
+                    segments.append(current_seg)
+                    current_seg = {"text": text, "start": start, "end": end}
+        
+        if current_seg:
+            segments.append(current_seg)
 
         logger.info(
             "Transcribed %d segment(s) from '%s' [detected language: %s]",

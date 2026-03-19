@@ -1,8 +1,21 @@
+# Backend
 fastapi
 uvicorn[standard]
 pydub
 python-multipart
+nested-asyncio
+
+# AI / ML (Stable Audio Versions)
+torch==2.4.0
+torchaudio==2.4.0
+transformers==4.44.2
 openai-whisper
+coqui-tts[codec]==0.27.5
+
+# Processing
 librosa
 soundfile
 numpy
+deep-translator
+edge-tts
+noisereduce
